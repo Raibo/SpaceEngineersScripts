@@ -32,9 +32,9 @@ namespace IngameScript
     class RoboticArm
     {
         private IMyTerminalBlock tip;
-        private HandyRotor rotorRotation;
-        private HandyRotor rotor1;
-        private HandyRotor rotor2;
+        private readonly HandyRotor rotorRotation;
+        private readonly HandyRotor rotor1;
+        private readonly HandyRotor rotor2;
 
         private const double LowerLimit = 0.1d;
 
@@ -54,11 +54,14 @@ namespace IngameScript
             this.ArmBaseOrientation = armBaseOrientation;
 
             // finding next 2 rotors to assign as robotic arm rotors
-            var connectionBlocks = allBlocks.OfType<IMyMechanicalConnectionBlock>();
+            var connectionBlocks = allBlocks.OfType<IMyMechanicalConnectionBlock>().ToList();
             var currentBlock = baseRotor;
 
+            currentBlock = GetNextRotorBlock(connectionBlocks, currentBlock);
+            rotor1 = new HandyRotor(currentBlock);
 
-
+            currentBlock = GetNextRotorBlock(connectionBlocks, currentBlock);
+            rotor2 = new HandyRotor(currentBlock);
             
             localArmUpVector = GetArmUpVector();
         }
@@ -66,12 +69,15 @@ namespace IngameScript
         IMyMotorStator GetNextRotorBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
         {
             var currentConnectionBlock = currentBlock;
+
             do
             {
                 currentConnectionBlock = GetNextConnectionBlock(connectionBlocks, currentConnectionBlock);
                 if (currentConnectionBlock is IMyMotorStator)
                     return currentConnectionBlock as IMyMotorStator;
             } while (currentConnectionBlock != null);
+
+            return null;
         }
 
         IMyMechanicalConnectionBlock GetNextConnectionBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
@@ -151,8 +157,13 @@ namespace IngameScript
             var localProjectedDestination = rotationPlane.ProjectPoint(ref localDestination);
 
             // calculating tip and destination as 2D points for the arm
-            var armTipPoint = new Vector2D(Vector3D.Distance(localRotationBase, localProjectedTip), localTip.Y);
-            var armDestinationPoint = new Vector2D(Vector3D.Distance(localRotationBase, localProjectedDestination), localDestination.Y);
+            var nonRotationPlane = new PlaneD(new Vector3D(0d, 0d, 0d), new Vector3D(1d, 0d, 0d)); // could be anything perpendicular to rotation plane
+            var localArmBasePoint = GetLocalVector(rotorRotation.Rotor.WorldMatrix, rotationBasePoint, rotor1.Rotor.GetPosition());
+            var localProjectedArmBase = nonRotationPlane.ProjectPoint(ref localArmBasePoint);
+            var armBaseElevation = localProjectedArmBase.Length(); // TODO: adjust for upside down variant
+
+            var armTipPoint = new Vector2D(Vector3D.Distance(localRotationBase, localProjectedTip), localTip.Y - armBaseElevation);
+            var armDestinationPoint = new Vector2D(Vector3D.Distance(localRotationBase, localProjectedDestination), localDestination.Y - armBaseElevation);
 
             // launch movement
             MakeRotationMovement(localProjectedTip, localProjectedDestination, targetRps);
@@ -190,10 +201,11 @@ namespace IngameScript
             var localArmBase = new Vector2D(0, 0);
             
             var localArmElbow3D = GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armElbowPoint);
-            var localArmElbow = new Vector2D(localArmElbow3D.X, localArmElbow3D.Y);
+            var localArmElbow = new Vector2D(-localArmElbow3D.X, localArmElbow3D.Z); // -X and Z are just how they are and who knows why
+                                                      // TODO: this might be different for when arm attached to the left, not right side
 
             var localArmTip3D = GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armTipPoint);
-            var localArmTip = new Vector2D(localArmTip3D.X, localArmTip3D.Y);
+            var localArmTip = new Vector2D(-localArmTip3D.X, localArmTip3D.Z);
 
             // calculating arm segments lengths
             var segment1Length = localArmElbow.Length(); // from base to elbow
@@ -224,8 +236,14 @@ namespace IngameScript
                 ? (float)(Math.PI - VectorUtility.Angle(-newLocalArmElbow, newLocalArmTip - newLocalArmElbow))
                 : (float)(Math.PI + VectorUtility.Angle(-newLocalArmElbow, newLocalArmTip - newLocalArmElbow));
 
-            rotor1.MoveTowardsAngle(rotor1NewAngle, armVelocity);
-            rotor2.MoveTowardsAngle(rotor2NewAngle, armVelocity);
+            // calculating speed ratio
+            var diff1 = Math.Abs(AngleUtility.MinimizeAngle(rotor1NewAngle - rotor1.Angle));
+            var diff2 = Math.Abs(AngleUtility.MinimizeAngle(rotor2NewAngle - rotor2.Angle));
+            var rotor1SpeedPart = diff1 / (diff1 + diff2);
+            var rotor2SpeedPart = 1 - rotor1SpeedPart;
+
+            rotor1.MoveTowardsAngle(rotor1NewAngle, armVelocity * rotor1SpeedPart);
+            rotor2.MoveTowardsAngle(rotor2NewAngle, armVelocity * rotor2SpeedPart);
         }
         
         // Get point in local system of coordinates of an object (anchor). 
