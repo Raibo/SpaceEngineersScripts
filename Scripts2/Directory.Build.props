@@ -1,0 +1,5 @@
+<Project>
+ <PropertyGroup>
+   <LangVersion>C# 6.0</LangVersion>
+ </PropertyGroup>
+</Project>
