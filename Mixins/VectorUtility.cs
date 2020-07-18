@@ -56,6 +56,51 @@ namespace IngameScript
 
         public static double Dot(Vector2D a, Vector2D b) => a.X * b.X + a.Y * b.Y;
         public static double Cross(Vector2D a, Vector2D b) => a.X * b.Y - a.Y * b.X;
-    }
 
+        public static Vector2D FindClosestPointOnSegment(Vector2D anchor, Vector2D a, Vector2D b)
+        {
+            var point = FindClosestPointOnSegment(
+                new Vector3D(anchor.X, anchor.Y, 0d), new Vector3D(a.X, a.Y, 0d), new Vector3D(b.X, b.Y, 0d));
+
+            return new Vector2D(point.X, point.Y);
+        }
+
+        // on a segment ab, finds a closest point to anchor point
+        public static Vector3D FindClosestPointOnSegment(Vector3D anchor, Vector3D a, Vector3D b)
+        {
+            var o = anchor;
+            var distanceA = Vector3D.Distance(o, a);
+            var distanceB = Vector3D.Distance(o, b);
+
+            Vector3D c; // closest point
+            Vector3D f; // further point
+            double oc;
+
+            if (distanceA < distanceB)
+            {
+                oc = distanceA;
+                c = a;
+                f = b;
+            }
+            else
+            {
+                oc = distanceB;
+                c = b;
+                f = a;
+            }
+
+            // angle (farPoint - closePoint - o)
+            var closeAngle = Angle(f - c, o - c);
+            if (closeAngle >= Math.PI / 2)
+                return c;
+
+            // h stands for answer, it is height point of the triangle, drawn from o onto fc
+            var hc = Math.Cos(closeAngle) * oc;
+            var fc = Vector3D.Distance(f, c);
+            var hcPart = hc / fc;
+
+            var h = (f - c) * hcPart + c;
+            return h;
+        }
+    }
 }
