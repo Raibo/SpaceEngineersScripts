@@ -55,7 +55,7 @@ namespace IngameScript
 
         public void Main(string argument, UpdateType updateSource)
         {
-            roboticArm.KeepMoving(new Vector3D(53539.59, -26784.67, 11963.55), 1);
+            roboticArm.KeepMoving(new Vector3D(53539.59, -26784.67, 11963.55), 2);
         }
     }
 }
