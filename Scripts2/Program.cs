@@ -55,7 +55,9 @@ namespace IngameScript
 
         public void Main(string argument, UpdateType updateSource)
         {
-            roboticArm.KeepMoving(new Vector3D(53539.59, -26784.67, 11963.55), 2);
+            var direction = (Vector3D)Cock.MoveIndicator;
+            //roboticArm.KeepMoving(new Vector3D(53539.59, -26784.67, 11963.55), 2);
+            roboticArm.KeepMoving(Tip.GetPosition() + direction, 6);
         }
     }
 }

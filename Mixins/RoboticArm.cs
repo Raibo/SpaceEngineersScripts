@@ -17,7 +17,7 @@ using VRageMath;
 
 namespace IngameScript
 {
-    public enum RotationBaseOrientationLayout
+    public enum VerticalOrientation
     {
         Upper,
         Lower
@@ -36,23 +36,25 @@ namespace IngameScript
         private readonly HandyRotor rotor1;
         private readonly HandyRotor rotor2;
 
-        private const double LowerLimit = 0.1d;
+        private const double InnerLimit = 0.1d;
+        private const double OuterLimit = 0.95d;
         private const double NearbyPointFromVelocityMultiplier = 0.4d;
         private const double ArmRpsMultiplier = 1.8d;
+        private const double DistanceToCancelMovement = 0.001d;
 
         private readonly Vector3D localArmUpVector;
 
         public IMyTextSurface lcd;
-        public readonly RotationBaseOrientationLayout RotationBaseOrientation;
+        public readonly VerticalOrientation VerticalOrientation;
         public readonly ArmBaseOrientationLayout ArmBaseOrientation;
 
         public RoboticArm(List<IMyTerminalBlock> allBlocks, IMyMotorStator baseRotor, IMyTerminalBlock tip, 
-            RotationBaseOrientationLayout rotationBaseOrientation = RotationBaseOrientationLayout.Upper,
+            VerticalOrientation verticalOrientation = VerticalOrientation.Upper,
             ArmBaseOrientationLayout armBaseOrientation = ArmBaseOrientationLayout.Right)
         {
             rotorRotation = new HandyRotor(baseRotor);
             this.tip = tip;
-            this.RotationBaseOrientation = rotationBaseOrientation;
+            this.VerticalOrientation = verticalOrientation;
             this.ArmBaseOrientation = armBaseOrientation;
 
             // finding next 2 rotors to assign as robotic arm rotors
@@ -95,7 +97,7 @@ namespace IngameScript
 
         Vector3D GetArmUpVector()
         {
-            var baseUp = RotationBaseOrientation == RotationBaseOrientationLayout.Upper
+            var baseUp = VerticalOrientation == VerticalOrientation.Upper
                 ? rotorRotation.Rotor.WorldMatrix.Up
                 : rotorRotation.Rotor.WorldMatrix.Down;
 
@@ -120,29 +122,36 @@ namespace IngameScript
             return VectorUtility.Normalize(projectedLocalDestination) * projectedLocalTip.Length() + rotationBasePoint + abovePlaneVector;
         }
 
-        private Vector3D PushFromTooClose(Vector3D destination, Vector3D armBasePoint, Vector3D armElbowPoint, Vector3D armTipPoint)
+        private Vector3D BringToSafeZone(Vector3D destination, Vector3D armBasePoint, Vector3D armElbowPoint, Vector3D armTipPoint)
         {
-            // calculating blind radius
+            // calculating blind radius and max reach radius
             var segment1Length = Vector3D.Distance(armBasePoint, armElbowPoint);
             var segment2Length = Vector3D.Distance(armTipPoint, armElbowPoint);
-            var armBlindRadius = Math.Abs(segment1Length - segment2Length) * (LowerLimit + 1);
+            var armBlindRadius = Math.Abs(segment1Length - segment2Length) * (InnerLimit + 1);
+            var armMaxReachRadius = Math.Abs(segment1Length + segment2Length) * OuterLimit;
 
             // calculating just an average thing not to let segments angle too small
             var averageSegmentLength = (segment1Length + segment2Length) / 2;
-            var averageSafeRadius = averageSegmentLength * LowerLimit;
+            var averageSafeRadius = averageSegmentLength * InnerLimit;
 
-            // taking most strict limitation
-            var safeRadius = Math.Max(armBlindRadius, averageSafeRadius);
+            // taking most strict limitation for inner radius
+            var safeInnerRadius = Math.Max(armBlindRadius, averageSafeRadius);
+
+            // taking limitation for outer radius
+            var destinationDistance = Vector3D.Distance(destination, armBasePoint);
+            var safeOuterRadius = Math.Min(armMaxReachRadius, destinationDistance);
 
             // checking if it is OK
-            var destinationDistance = Vector3D.Distance(destination, armBasePoint);
-            if (destinationDistance > safeRadius)
+            if (destinationDistance >= safeInnerRadius && destinationDistance <= safeOuterRadius)
                 return destination;
 
-            // if not OK, then calculating closest point out of safe radius in the direction of destination
-            var awayVector = VectorUtility.Normalize(destination - armBasePoint) * safeRadius;
+            // if not OK, then calculating closest point inside safe zone
+            var awayVector = VectorUtility.Normalize(destination - armBasePoint);
 
-            return armBasePoint + awayVector;
+            if (destinationDistance < safeInnerRadius)
+                return armBasePoint + awayVector * safeInnerRadius;
+
+            return armBasePoint + awayVector * safeOuterRadius;
         }
 
         private Vector3D CutTrailAtClosestToBase(Vector3D rotationBasePoint, Vector3D armTipPoint, Vector3D destination)
@@ -192,6 +201,7 @@ namespace IngameScript
 
         public void KeepMoving(Vector3D destination, double velocity /* Meters per sec*/)
         {
+
             var matrix = rotorRotation.Rotor.WorldMatrix;
 
             // getting world points
@@ -200,9 +210,18 @@ namespace IngameScript
             var armElbowPoint = rotor2.Rotor.GetPosition();
             var armTipPoint = tip.GetPosition();
 
+            // no point doing anything if the tip is already there
+            if (Vector3D.Distance(armTipPoint, destination) < DistanceToCancelMovement)
+            {
+                rotorRotation.Stop();
+                rotor1.Stop();
+                rotor2.Stop();
+                return;
+            }
+
             // adjust destination in case its something wrong with it
             //destination = CutTrailAtClosestToBase(rotationBasePoint, armTipPoint, destination);
-            destination = PushFromTooClose(destination, armBasePoint, armElbowPoint, armTipPoint);
+            destination = BringToSafeZone(destination, armBasePoint, armElbowPoint, armTipPoint);
             destination = TakeNearbyPoint(destination, armTipPoint, velocity);
 
             var rotationEndPoint = GetRotationEndPoint(destination, rotationBasePoint, armTipPoint);
@@ -289,23 +308,10 @@ namespace IngameScript
             // calculating arm segments lengths
             var segment1Length = localArmElbow.Length(); // from base to elbow
             var segment2Length = (localArmTip - localArmElbow).Length(); // from elbow to tip
-            var averageSegmentLength = (segment1Length + segment2Length) / 2f;
-
-            // avoiding tip getting too close to center of rotation
-            if (newLocalArmTip.Length() < LowerLimit * averageSegmentLength)
-                newLocalArmTip *= averageSegmentLength / newLocalArmTip.Length();
-
-            // avoiding out of range movement
-            if (newLocalArmTip.Length() > segment1Length + segment2Length)
-            {
-                rotor1.Stop();
-                rotor2.Stop();
-                return;
-            }
 
             // calculating new elbow point
             var points = CircleIntersectFinder.Find(localArmBase, (float)segment1Length, newLocalArmTip, (float)segment2Length);
-            var newLocalArmElbow = points[1]; // TODO determine out of directions
+            var newLocalArmElbow = VerticalOrientation == VerticalOrientation.Upper ? points[1] : points[0];
 
             // calculating new rotor angles
             var rotor1NewAngle = (float)VectorUtility.Angle(Vector2D.UnitY, newLocalArmElbow); // TODO allow to orient arm rotors freely when build
