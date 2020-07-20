@@ -228,10 +228,10 @@ namespace IngameScript
 
             // calculate local points
             var localRotationBase = Vector3D.Zero;
-            var localArmBasePoint = GetLocalVector(matrix, rotationBasePoint, armBasePoint);
-            var localArmTipPoint = GetLocalVector(matrix, rotationBasePoint, armTipPoint);
-            var localDestination = GetLocalVector(matrix, rotationBasePoint, destination);
-            var localRotationEndPoint = GetLocalVector(matrix, rotationBasePoint, rotationEndPoint);
+            var localArmBasePoint = VectorUtility.GetLocalVector(matrix, rotationBasePoint, armBasePoint);
+            var localArmTipPoint = VectorUtility.GetLocalVector(matrix, rotationBasePoint, armTipPoint);
+            var localDestination = VectorUtility.GetLocalVector(matrix, rotationBasePoint, destination);
+            var localRotationEndPoint = VectorUtility.GetLocalVector(matrix, rotationBasePoint, rotationEndPoint);
 
             // calculating planes to project on
             var rotationPlane = new PlaneD(new Vector3D(0d, 0d, 0d), new Vector3D(0d, 1d, 0d)); // note that rotation plane is XZ
@@ -298,11 +298,11 @@ namespace IngameScript
             // calculating local points
             var localArmBase = new Vector2D(0, 0);
             
-            var localArmElbow3D = GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armElbowPoint);
+            var localArmElbow3D = VectorUtility.GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armElbowPoint);
             var localArmElbow = new Vector2D(-localArmElbow3D.X, localArmElbow3D.Z); // -X and Z are just how they are and who knows why
                                                       // TODO: this might be different for when arm attached to the left, not right side
 
-            var localArmTip3D = GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armTipPoint);
+            var localArmTip3D = VectorUtility.GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armTipPoint);
             var localArmTip = new Vector2D(-localArmTip3D.X, localArmTip3D.Z);
 
             // calculating arm segments lengths
@@ -334,14 +334,5 @@ namespace IngameScript
             rotor1.MoveTowardsAngle(rotor1NewAngle, targetRps1 * ArmRpsMultiplier);
             rotor2.MoveTowardsAngle(rotor2NewAngle, targetRps2 * ArmRpsMultiplier);
         }
-        
-        // Get point in local system of coordinates of an object (anchor). 
-        Vector3D GetLocalVector(MatrixD anchorMatrix, Vector3D anchorPosition, Vector3D point)
-        {
-            var worldPoint = point - anchorPosition;
-            var localPoint = Vector3D.Rotate(worldPoint, MatrixD.Transpose(anchorMatrix));
-            return new Vector3D(localPoint.X, localPoint.Y, localPoint.Z);
-        }
-        
     }
 }

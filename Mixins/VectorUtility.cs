@@ -57,6 +57,20 @@ namespace IngameScript
         public static double Dot(Vector2D a, Vector2D b) => a.X * b.X + a.Y * b.Y;
         public static double Cross(Vector2D a, Vector2D b) => a.X * b.Y - a.Y * b.X;
 
+        // Get a local vector in anchor's local coordinate system from a world point
+        public static Vector3D GetLocalVector(MatrixD anchorMatrix, Vector3D anchorPosition, Vector3D point)
+        {
+            var worldVector = point - anchorPosition;
+            return Vector3D.Rotate(worldVector, MatrixD.Transpose(anchorMatrix));
+        }
+
+        // Get a world point from a local point in anchor's local coordinate system
+        public static Vector3D GetWorldPoint(MatrixD anchorMatrix, Vector3D anchorPosition, Vector3D point)
+        {
+            var worldVector = Vector3D.Rotate(point, anchorMatrix);
+            return anchorPosition + worldVector;
+        }
+
         public static Vector2D FindClosestPointOnSegment(Vector2D anchor, Vector2D a, Vector2D b)
         {
             var point = FindClosestPointOnSegment(
