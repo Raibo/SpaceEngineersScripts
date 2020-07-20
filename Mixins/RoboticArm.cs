@@ -93,6 +93,11 @@ namespace IngameScript
             var armElbowPoint = rotor2.Rotor.GetPosition();
             var armTipPoint = tip.GetPosition();
 
+            // adjust destination in case its something wrong with it
+            //destination = CutTrailAtClosestToBase(rotationBasePoint, armTipPoint, destination);
+            destination = BringToSafeZone(destination, armBasePoint, armElbowPoint, armTipPoint);
+            destination = TakeNearbyPoint(destination, armTipPoint, velocity);
+
             // no point doing anything if the tip is already there
             if (Vector3D.Distance(armTipPoint, destination) < DistanceToCancelMovement)
             {
@@ -101,11 +106,6 @@ namespace IngameScript
                 rotor2.Stop();
                 return;
             }
-
-            // adjust destination in case its something wrong with it
-            //destination = CutTrailAtClosestToBase(rotationBasePoint, armTipPoint, destination);
-            destination = BringToSafeZone(destination, armBasePoint, armElbowPoint, armTipPoint);
-            destination = TakeNearbyPoint(destination, armTipPoint, velocity);
 
             var rotationEndPoint = GetRotationEndPoint(destination, rotationBasePoint, armTipPoint);
 
@@ -168,7 +168,7 @@ namespace IngameScript
             rotorRotation.MoveTowardsAngle(destinationAngle, targetRps);
         }
 
-        private void MakeArmMovement(Vector2D newLocalArmTip,  double armVelocity)
+        private void MakeArmMovement(Vector2D newLocalArmTip, double armVelocity)
         {
             // calculating points
             var armBasePoint = rotor1.Rotor.GetPosition();
@@ -180,7 +180,6 @@ namespace IngameScript
             
             var localArmElbow3D = VectorUtility.GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armElbowPoint);
             var localArmElbow = new Vector2D(-localArmElbow3D.X, localArmElbow3D.Z); // -X and Z are just how they are and who knows why
-                                                      // TODO: this might be different for when arm attached to the left, not right side
 
             var localArmTip3D = VectorUtility.GetLocalVector(rotor1.Rotor.WorldMatrix, armBasePoint, armTipPoint);
             var localArmTip = new Vector2D(-localArmTip3D.X, localArmTip3D.Z);
@@ -189,9 +188,18 @@ namespace IngameScript
             var segment1Length = localArmElbow.Length(); // from base to elbow
             var segment2Length = (localArmTip - localArmElbow).Length(); // from elbow to tip
 
-            // calculating new elbow point
+            var adjustedVelocity = armVelocity / ((segment1Length + segment2Length) / 2);
+
+            // calculating new elbow point | might be NaN, even with destination checks
             var points = CircleIntersectFinder.Find(localArmBase, (float)segment1Length, newLocalArmTip, (float)segment2Length);
             var newLocalArmElbow = VerticalOrientation == VerticalOrientation.Upper ? points[1] : points[0];
+
+            // flip points around Y axis if orientation is left, default calculations made for right orientation
+            if (ArmBaseOrientation == ArmBaseOrientationLayout.Left)
+            {
+                newLocalArmElbow = new Vector2D(-newLocalArmElbow.X, newLocalArmElbow.Y);
+                newLocalArmTip = new Vector2D(-newLocalArmTip.X, newLocalArmTip.Y);
+            }
 
             // calculating new rotor angles
             var rotor1NewAngle = (float)VectorUtility.Angle(Vector2D.UnitY, newLocalArmElbow); // TODO allow to orient arm rotors freely when build
@@ -208,8 +216,8 @@ namespace IngameScript
             var rotor2SpeedPart = 1 - rotor1SpeedPart;
 
             // calculating target rps
-            var targetRps1 = armVelocity * rotor1SpeedPart / segment1Length;
-            var targetRps2 = armVelocity * rotor2SpeedPart / segment2Length;
+            var targetRps1 = adjustedVelocity * rotor1SpeedPart;
+            var targetRps2 = adjustedVelocity * rotor2SpeedPart;
 
             rotor1.MoveTowardsAngle(rotor1NewAngle, targetRps1 * ArmRpsMultiplier);
             rotor2.MoveTowardsAngle(rotor2NewAngle, targetRps2 * ArmRpsMultiplier);
@@ -328,8 +336,8 @@ namespace IngameScript
         private const double InnerLimit = 0.1d;
         private const double OuterLimit = 0.95d;
         private const double NearbyPointFromVelocityMultiplier = 0.4d;
-        private const double ArmRpsMultiplier = 1.8d;
-        private const double DistanceToCancelMovement = 0.001d;
+        private const double ArmRpsMultiplier = 1.0d;
+        private const double DistanceToCancelMovement = 0.01d;
 
         private readonly Vector3D localArmUpVector;
     }

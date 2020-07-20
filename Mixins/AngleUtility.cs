@@ -23,15 +23,9 @@ namespace IngameScript
         public static double RadToDegree(double angle) => angle / Math.PI * 180;
         public static double DegreeToRad(double angle) => angle * Math.PI / 180;
 
-        public static double NormalizeAngle(double angle)
-        {
-            if (angle > PI)
-                angle -= 2 * PI;
-            if (angle < PI)
-                angle += 2 * PI;
-
-            return angle;
-        }
+        /// <summary>
+        /// bringing angle value to [-PI to +PI] segment
+        /// </summary>
         public static double MinimizeAngle(double angle)
         {
             if (angle > PI)
@@ -41,6 +35,23 @@ namespace IngameScript
 
             return angle;
         }
+
+        /// <summary>
+        /// bringing angle value to [-PI to +PI] segment
+        /// </summary>
+        public static float MinimizeAngle(float angle)
+        {
+            if (angle > PI)
+                angle -= 2 * PI;
+            if (angle < -PI)
+                angle += 2 * PI;
+
+            return angle;
+        }
+
+        /// <summary>
+        /// bringing angle value to [0 to +2*PI] segment
+        /// </summary>
         public static double Positive(double angle)
         {
             if (angle > 2 * PI)
@@ -50,6 +61,18 @@ namespace IngameScript
 
             return angle;
         }
-    }
 
+        /// <summary>
+        /// bringing angle value to [0 to +2*PI] segment
+        /// </summary>
+        public static float Positive(float angle)
+        {
+            if (angle > 2 * PI)
+                angle -= 2 * PI;
+            if (angle < 0)
+                angle += 2 * PI;
+
+            return angle;
+        }
+    }
 }
