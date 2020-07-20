@@ -153,21 +153,18 @@ namespace IngameScript
 
         private void MakeRotationMovement(Vector3D localProjectedTip, Vector3D localProjectedDestination, double targetRps)
         {
-            var tipAngle = VectorUtility.Angle(rotorRotation.Local0MarkVector, localProjectedTip); // 0 degrees mark on rotor\
-            if (VectorUtility.Angle(rotorRotation.Local90MarkVector, localProjectedTip) <
-                VectorUtility.Angle(rotorRotation.Local270MarkVector, localProjectedTip))
-                tipAngle = 2 * AngleUtility.PI - tipAngle;
-            tipAngle = 2 * AngleUtility.PI - tipAngle; // SE rotors angles are reversed
-
+            // calculating angle diff
             var diff = VectorUtility.Angle(localProjectedDestination, localProjectedTip);
-            if (Vector3D.Dot(
-                    Vector3D.Cross(localProjectedTip, localProjectedDestination),
-                    new Vector3D(0d, 1d, 0d)
-                    ) > 0) // Tip is to the left
+
+            // calculating the direction to which to rotate.
+            var movementCrossVector = Vector3D.Cross(localProjectedTip, localProjectedDestination);
+            var isMovingClockwise = Vector3D.Dot(movementCrossVector, new Vector3D(0d, -1d, 0d)) > 0;
+
+            if (!isMovingClockwise) // in SE rotors have their angle increased in clockwise movement when their head pointed upwards (for some reason)
                 diff = -diff;
 
+            // applying new angle to the rotor
             var destinationAngle = AngleUtility.Positive(rotorRotation.Angle + diff);
-
             rotorRotation.MoveTowardsAngle(destinationAngle, targetRps);
         }
 
