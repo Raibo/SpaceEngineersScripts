@@ -34,7 +34,7 @@ namespace IngameScript
 
         public HandyRotor(IMyMotorStator rotor)
         {
-            this.Rotor = rotor;
+            Rotor = rotor;
         }
 
         public void MoveTowardsAngle(double angle, double radsPerSecond) => MoveTowardsAngle((float) angle, (float) radsPerSecond);

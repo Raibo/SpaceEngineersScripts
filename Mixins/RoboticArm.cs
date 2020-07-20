@@ -31,19 +31,6 @@ namespace IngameScript
 
     class RoboticArm
     {
-        private IMyTerminalBlock tip;
-        private readonly HandyRotor rotorRotation;
-        private readonly HandyRotor rotor1;
-        private readonly HandyRotor rotor2;
-
-        private const double InnerLimit = 0.1d;
-        private const double OuterLimit = 0.95d;
-        private const double NearbyPointFromVelocityMultiplier = 0.4d;
-        private const double ArmRpsMultiplier = 1.8d;
-        private const double DistanceToCancelMovement = 0.001d;
-
-        private readonly Vector3D localArmUpVector;
-
         public IMyTextSurface lcd;
         public readonly VerticalOrientation VerticalOrientation;
         public readonly ArmBaseOrientationLayout ArmBaseOrientation;
@@ -54,8 +41,8 @@ namespace IngameScript
         {
             rotorRotation = new HandyRotor(baseRotor);
             this.tip = tip;
-            this.VerticalOrientation = verticalOrientation;
-            this.ArmBaseOrientation = armBaseOrientation;
+            VerticalOrientation = verticalOrientation;
+            ArmBaseOrientation = armBaseOrientation;
 
             // finding next 2 rotors to assign as robotic arm rotors
             var connectionBlocks = allBlocks.OfType<IMyMechanicalConnectionBlock>().ToList();
@@ -70,7 +57,7 @@ namespace IngameScript
             localArmUpVector = GetArmUpVector();
         }
 
-        IMyMotorStator GetNextRotorBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
+        private IMyMotorStator GetNextRotorBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
         {
             var currentConnectionBlock = currentBlock;
 
@@ -84,7 +71,7 @@ namespace IngameScript
             return null;
         }
 
-        IMyMechanicalConnectionBlock GetNextConnectionBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
+        private IMyMechanicalConnectionBlock GetNextConnectionBlock(List<IMyMechanicalConnectionBlock> connectionBlocks, IMyMechanicalConnectionBlock currentBlock)
         {
             var targetGrid = currentBlock.TopGrid;
             
@@ -93,110 +80,6 @@ namespace IngameScript
                     return connectionBlocks[i];
 
             return null;
-        }
-
-        Vector3D GetArmUpVector()
-        {
-            var baseUp = VerticalOrientation == VerticalOrientation.Upper
-                ? rotorRotation.Rotor.WorldMatrix.Up
-                : rotorRotation.Rotor.WorldMatrix.Down;
-
-            var armUp = Vector3D.Rotate(baseUp, MatrixD.Transpose(rotor1.Rotor.WorldMatrix));
-
-            return armUp;
-        }
-
-        private Vector3D GetRotationEndPoint(Vector3D destination, Vector3D rotationBasePoint, Vector3D armTipPoint)
-        {
-            // caution: local points here are different than in main method
-            var localDestination = destination - rotationBasePoint;
-            var localTip = armTipPoint - rotationBasePoint;
-
-            var rotorUpVector = rotorRotation.Rotor.WorldMatrix.Up;
-            var plane = new PlaneD(new Vector3D(0d, 0d, 0d), rotorUpVector);
-            // Project destination point onto horizontal rotation plane
-            var projectedLocalDestination = plane.ProjectPoint(ref localDestination);
-            var projectedLocalTip = plane.ProjectPoint(ref localTip);
-            
-            var abovePlaneVector = localTip - projectedLocalTip;
-            return VectorUtility.Normalize(projectedLocalDestination) * projectedLocalTip.Length() + rotationBasePoint + abovePlaneVector;
-        }
-
-        private Vector3D BringToSafeZone(Vector3D destination, Vector3D armBasePoint, Vector3D armElbowPoint, Vector3D armTipPoint)
-        {
-            // calculating blind radius and max reach radius
-            var segment1Length = Vector3D.Distance(armBasePoint, armElbowPoint);
-            var segment2Length = Vector3D.Distance(armTipPoint, armElbowPoint);
-            var armBlindRadius = Math.Abs(segment1Length - segment2Length) * (InnerLimit + 1);
-            var armMaxReachRadius = Math.Abs(segment1Length + segment2Length) * OuterLimit;
-
-            // calculating just an average thing not to let segments angle too small
-            var averageSegmentLength = (segment1Length + segment2Length) / 2;
-            var averageSafeRadius = averageSegmentLength * InnerLimit;
-
-            // taking most strict limitation for inner radius
-            var safeInnerRadius = Math.Max(armBlindRadius, averageSafeRadius);
-
-            // taking limitation for outer radius
-            var destinationDistance = Vector3D.Distance(destination, armBasePoint);
-            var safeOuterRadius = Math.Min(armMaxReachRadius, destinationDistance);
-
-            // checking if it is OK
-            if (destinationDistance >= safeInnerRadius && destinationDistance <= safeOuterRadius)
-                return destination;
-
-            // if not OK, then calculating closest point inside safe zone
-            var awayVector = VectorUtility.Normalize(destination - armBasePoint);
-
-            if (destinationDistance < safeInnerRadius)
-                return armBasePoint + awayVector * safeInnerRadius;
-
-            return armBasePoint + awayVector * safeOuterRadius;
-        }
-
-        private Vector3D CutTrailAtClosestToBase(Vector3D rotationBasePoint, Vector3D armTipPoint, Vector3D destination)
-        {
-            // if the trail is so that the tip approaches the base at first, and then move away, we will aim to the point when it turns away
-            // so that arm will have to move in one direction, either towards the base or away from it
-            // and such we can calculate everything for tip to follow straight line (kind of)
-
-            var closestPoint = VectorUtility.FindClosestPointOnSegment(rotationBasePoint, armTipPoint, destination);
-            var isCloseToBasePoint = Vector3D.Distance(armTipPoint, closestPoint) <
-                                     Vector3D.Distance(destination, closestPoint) * 0.1d;
-            return isCloseToBasePoint
-                ? destination
-                : closestPoint;
-        }
-
-        private double GetRotationSpeedPart(Vector3D localDestination, Vector3D localArmTipPoint, Vector3D localRotationBase, double armDistance)
-        {
-            var localArmDirectionPoint = VectorUtility.Normalize(localRotationBase - localArmTipPoint) * armDistance + localArmTipPoint;
-            var pathCenter = new Vector3D(
-                (localArmTipPoint.X + localDestination.X) / 2,
-                (localArmTipPoint.Y + localDestination.Y) / 2,
-                (localArmTipPoint.Z + localDestination.Z) / 2);
-
-            // using completion to parallelogram
-            var centerToArmVector = localArmDirectionPoint - pathCenter;
-            var localRotationDirectionPoint = localArmDirectionPoint - 2 * centerToArmVector;
-
-            var armSpeed = Vector3D.Distance(localArmTipPoint, localArmDirectionPoint);
-            var rotationSpeed = Vector3D.Distance(localArmTipPoint, localRotationDirectionPoint);
-
-            return rotationSpeed / (rotationSpeed + armSpeed);
-        }
-
-        private Vector3D TakeNearbyPoint(Vector3D destination, Vector3D armTipPoint, double velocity)
-        {
-            // calculating where the tip is heading
-            var generalDirection = VectorUtility.Normalize(destination - armTipPoint);
-
-            // calculating how far should we cut the trail to make destination more nearby
-            var generalDistance = Vector3D.Distance(armTipPoint, destination);
-            var preferredDistance = velocity * NearbyPointFromVelocityMultiplier;
-            var minDistance = Math.Min(generalDistance, preferredDistance);
-
-            return armTipPoint + generalDirection * minDistance;
         }
 
         public void KeepMoving(Vector3D destination, double velocity /* Meters per sec*/)
@@ -334,5 +217,123 @@ namespace IngameScript
             rotor1.MoveTowardsAngle(rotor1NewAngle, targetRps1 * ArmRpsMultiplier);
             rotor2.MoveTowardsAngle(rotor2NewAngle, targetRps2 * ArmRpsMultiplier);
         }
+
+        private Vector3D GetArmUpVector()
+        {
+            var baseUp = VerticalOrientation == VerticalOrientation.Upper
+                ? rotorRotation.Rotor.WorldMatrix.Up
+                : rotorRotation.Rotor.WorldMatrix.Down;
+
+            var armUp = Vector3D.Rotate(baseUp, MatrixD.Transpose(rotor1.Rotor.WorldMatrix));
+
+            return armUp;
+        }
+
+        private Vector3D GetRotationEndPoint(Vector3D destination, Vector3D rotationBasePoint, Vector3D armTipPoint)
+        {
+            // caution: local points here are different than in main method
+            var localDestination = destination - rotationBasePoint;
+            var localTip = armTipPoint - rotationBasePoint;
+
+            var rotorUpVector = rotorRotation.Rotor.WorldMatrix.Up;
+            var plane = new PlaneD(new Vector3D(0d, 0d, 0d), rotorUpVector);
+            // Project destination point onto horizontal rotation plane
+            var projectedLocalDestination = plane.ProjectPoint(ref localDestination);
+            var projectedLocalTip = plane.ProjectPoint(ref localTip);
+
+            var abovePlaneVector = localTip - projectedLocalTip;
+            return VectorUtility.Normalize(projectedLocalDestination) * projectedLocalTip.Length() + rotationBasePoint + abovePlaneVector;
+        }
+
+        private Vector3D BringToSafeZone(Vector3D destination, Vector3D armBasePoint, Vector3D armElbowPoint, Vector3D armTipPoint)
+        {
+            // calculating blind radius and max reach radius
+            var segment1Length = Vector3D.Distance(armBasePoint, armElbowPoint);
+            var segment2Length = Vector3D.Distance(armTipPoint, armElbowPoint);
+            var armBlindRadius = Math.Abs(segment1Length - segment2Length) * (InnerLimit + 1);
+            var armMaxReachRadius = Math.Abs(segment1Length + segment2Length) * OuterLimit;
+
+            // calculating just an average thing not to let segments angle too small
+            var averageSegmentLength = (segment1Length + segment2Length) / 2;
+            var averageSafeRadius = averageSegmentLength * InnerLimit;
+
+            // taking most strict limitation for inner radius
+            var safeInnerRadius = Math.Max(armBlindRadius, averageSafeRadius);
+
+            // taking limitation for outer radius
+            var destinationDistance = Vector3D.Distance(destination, armBasePoint);
+            var safeOuterRadius = Math.Min(armMaxReachRadius, destinationDistance);
+
+            // checking if it is OK
+            if (destinationDistance >= safeInnerRadius && destinationDistance <= safeOuterRadius)
+                return destination;
+
+            // if not OK, then calculating closest point inside safe zone
+            var awayVector = VectorUtility.Normalize(destination - armBasePoint);
+
+            if (destinationDistance < safeInnerRadius)
+                return armBasePoint + awayVector * safeInnerRadius;
+
+            return armBasePoint + awayVector * safeOuterRadius;
+        }
+
+        private Vector3D CutTrailAtClosestToBase(Vector3D rotationBasePoint, Vector3D armTipPoint, Vector3D destination)
+        {
+            // if the trail is so that the tip approaches the base at first, and then move away, we will aim to the point when it turns away
+            // so that arm will have to move in one direction, either towards the base or away from it
+            // and such we can calculate everything for tip to follow straight line (kind of)
+
+            var closestPoint = VectorUtility.FindClosestPointOnSegment(rotationBasePoint, armTipPoint, destination);
+            var isCloseToBasePoint = Vector3D.Distance(armTipPoint, closestPoint) <
+                                     Vector3D.Distance(destination, closestPoint) * 0.1d;
+            return isCloseToBasePoint
+                ? destination
+                : closestPoint;
+        }
+
+        private double GetRotationSpeedPart(Vector3D localDestination, Vector3D localArmTipPoint, Vector3D localRotationBase, double armDistance)
+        {
+            var localArmDirectionPoint = VectorUtility.Normalize(localRotationBase - localArmTipPoint) * armDistance + localArmTipPoint;
+            var pathCenter = new Vector3D(
+                (localArmTipPoint.X + localDestination.X) / 2,
+                (localArmTipPoint.Y + localDestination.Y) / 2,
+                (localArmTipPoint.Z + localDestination.Z) / 2);
+
+            // using completion to parallelogram
+            var centerToArmVector = localArmDirectionPoint - pathCenter;
+            var localRotationDirectionPoint = localArmDirectionPoint - 2 * centerToArmVector;
+
+            var armSpeed = Vector3D.Distance(localArmTipPoint, localArmDirectionPoint);
+            var rotationSpeed = Vector3D.Distance(localArmTipPoint, localRotationDirectionPoint);
+
+            return rotationSpeed / (rotationSpeed + armSpeed);
+        }
+
+        private Vector3D TakeNearbyPoint(Vector3D destination, Vector3D armTipPoint, double velocity)
+        {
+            // calculating where the tip is heading
+            var generalDirection = VectorUtility.Normalize(destination - armTipPoint);
+
+            // calculating how far should we cut the trail to make destination more nearby
+            var generalDistance = Vector3D.Distance(armTipPoint, destination);
+            var preferredDistance = velocity * NearbyPointFromVelocityMultiplier;
+            var minDistance = Math.Min(generalDistance, preferredDistance);
+
+            return armTipPoint + generalDirection * minDistance;
+        }
+
+
+        private IMyTerminalBlock tip;
+        private readonly HandyRotor rotorRotation;
+        private readonly HandyRotor rotor1;
+        private readonly HandyRotor rotor2;
+
+        private const double InnerLimit = 0.1d;
+        private const double OuterLimit = 0.95d;
+        private const double NearbyPointFromVelocityMultiplier = 0.4d;
+        private const double ArmRpsMultiplier = 1.8d;
+        private const double DistanceToCancelMovement = 0.001d;
+
+        private readonly Vector3D localArmUpVector;
     }
 }
