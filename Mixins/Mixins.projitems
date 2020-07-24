@@ -11,6 +11,7 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)AngleUtility.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)CircleIntersectFinder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Crawler.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)HandyRotor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)RoboticArm.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)VectorUtility.cs" />

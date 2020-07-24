@@ -116,5 +116,9 @@ namespace IngameScript
             var h = (f - c) * hcPart + c;
             return h;
         }
+
+        public static Vector3D GetAverageVector(Vector3D a, Vector3D b) => new Vector3D(a.X + b.X, a.Y + b.Y, a.Z + b.Z) / 2;
+
+        public static string ToLabel(Vector3D point, string label = "x") => $"GPS:{label}:{point.X:0.###}:{point.Y:0.###}:{point.Z:0.###}:";
     }
 }
