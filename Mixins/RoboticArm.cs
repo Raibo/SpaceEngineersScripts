@@ -46,7 +46,7 @@ namespace IngameScript
             ArmBaseOrientationLayout armBaseOrientation = ArmBaseOrientationLayout.Right)
         {
             RotorRotation = new HandyRotor(baseRotor);
-            this.Tip = tip;
+            Tip = tip;
             VerticalOrientation = verticalOrientation;
             ArmBaseOrientation = armBaseOrientation;
 
@@ -98,7 +98,6 @@ namespace IngameScript
             var armTipPoint = Tip.GetPosition();
 
             // adjust destination in case its something wrong with it
-            //destination = CutTrailAtClosestToBase(rotationBasePoint, armTipPoint, destination);
             destination = BringToSafeZone(destination, armBasePoint, armElbowPoint, armTipPoint);
             destination = TakeNearbyPoint(destination, armTipPoint, velocity);
 
@@ -121,17 +120,26 @@ namespace IngameScript
             var localRotationEndPoint = VectorUtility.GetLocalVector(matrix, rotationBasePoint, rotationEndPoint);
             var localArmElbow = VectorUtility.GetLocalVector(matrix, rotationBasePoint, armElbowPoint);
 
+            var localArmPlaneNormalPoint = /*localArmBasePoint + */Vector3D.Rotate(Rotor1.Rotor.WorldMatrix.Up, MatrixD.Transpose(matrix));
+
             // calculating planes to project on
             var rotationPlane = new PlaneD(new Vector3D(0d, 0d, 0d), new Vector3D(0d, 1d, 0d)); // note that rotation plane is XZ
+            var armPlane = new PlaneD(localArmBasePoint, localArmPlaneNormalPoint);
+
+            // normalizing arm points by projecting them to the arm plane
+            var normalizedArmTip = armPlane.ProjectPoint(ref localArmTipPoint);
+            var normalizedArmElbow = armPlane.ProjectPoint(ref localArmElbow);
+            var normalizedDestination = armPlane.ProjectPoint(ref localDestination);
 
             // calculate local projected points
-            var localProjectedTip = rotationPlane.ProjectPoint(ref localArmTipPoint);
-            var localProjectedDestination = rotationPlane.ProjectPoint(ref localDestination);
-            var localProjectedArmElbow = rotationPlane.ProjectPoint(ref localArmElbow);
+            var localProjectedTip = rotationPlane.ProjectPoint(ref normalizedArmTip);
+            var localProjectedDestinationCommon = rotationPlane.ProjectPoint(ref localDestination); // for rotation
+            var localProjectedDestinationNormalized = rotationPlane.ProjectPoint(ref normalizedDestination); // for arm
+            var localProjectedArmElbow = rotationPlane.ProjectPoint(ref normalizedArmElbow);
             var localProjectedArmBase = rotationPlane.ProjectPoint(ref localArmBasePoint);
 
             // calculate rotation distance
-            var rotationDistance = Math.Abs(VectorUtility.Angle(localProjectedTip, localProjectedDestination)) * localProjectedTip.Length();
+            var rotationDistance = Math.Abs(VectorUtility.Angle(localProjectedTip, localProjectedDestinationCommon)) * localProjectedTip.Length();
 
             // adjust speeds
             //var rotationSpeedPart = GetRotationSpeedPart(localDestination, localArmTipPoint, localRotationBase, armDistance);
@@ -150,10 +158,10 @@ namespace IngameScript
 
             var armTipPoint2D = new Vector2D(Vector3D.Distance(localProjectedArmBase, localProjectedTip), localArmTipPoint.Y - armBaseElevation);
             var armElbow2D = new Vector2D(Vector3D.Distance(localProjectedArmBase, localProjectedArmElbow), localArmElbow.Y - armBaseElevation);
-            var armDestinationPoint2D = new Vector2D(Vector3D.Distance(localProjectedArmBase, localProjectedDestination), localDestination.Y - armBaseElevation);
+            var armDestinationPoint2D = new Vector2D(Vector3D.Distance(localProjectedArmBase, localProjectedDestinationNormalized), normalizedDestination.Y - armBaseElevation);
 
             // launch movement
-            MakeRotationMovement(localProjectedTip, localProjectedDestination, targetRps);
+            MakeRotationMovement(localProjectedTip, localProjectedDestinationCommon, targetRps);
             MakeArmMovement(armTipPoint2D, armElbow2D, armDestinationPoint2D, armVelocity);
         }
 
